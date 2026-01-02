@@ -13,7 +13,7 @@ st.set_page_config(page_title="Diag Flash RH_Eric PELTIER", layout="wide")
 # 🔒 SÉCURITÉ
 # ==========================================
 MOT_DE_PASSE = "ericpeltier"
-LOGO_FILE = "logoE2.png" # Nom de votre fichier image local
+LOGO_FILE = "logoE2.png" 
 
 if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
@@ -26,11 +26,10 @@ def check_password():
         st.error("Mot de passe incorrect ❌")
 
 if not st.session_state.authenticated:
-    # AFFICHER LE LOGO LOCAL
     if os.path.exists(LOGO_FILE):
         st.image(LOGO_FILE, width=200)
     else:
-        st.warning(f"Image '{LOGO_FILE}' introuvable. Placez-la dans le dossier du script.")
+        st.warning(f"Image '{LOGO_FILE}' introuvable.")
         
     st.title("🔒 Accès Restreint")
     st.markdown("### Outil Diag Flash RH")
@@ -40,30 +39,58 @@ if not st.session_state.authenticated:
 # ==========================================
 # 📂 CHARGEMENT ROBUSTE & EXPORT
 # ==========================================
+
+def smart_header_detection(df):
+    """
+    Fonction pour détecter la bonne ligne d'en-tête si la ligne 1 est vide ou inutile.
+    On cherche des mots clés typiques dans les 5 premières lignes.
+    """
+    expected_keywords = {'MATRICULE', 'MAT', 'SEXE', 'GENRE', 'SORTIE', 'ENTREE', 'SERVICE', 'EMPLOI'}
+    
+    current_cols = set(str(c).upper().strip() for c in df.columns)
+    if len(current_cols.intersection(expected_keywords)) >= 2:
+        return df
+
+    for i, row in df.head(5).iterrows():
+        row_values = set(str(val).upper().strip() for val in row.values if pd.notna(val))
+        if len(row_values.intersection(expected_keywords)) >= 2:
+            new_header = row
+            df_new = df.iloc[i+1:].copy()
+            df_new.columns = new_header
+            return df_new
+            
+    return df
+
 @st.cache_data
 def load_data(file):
+    df = None
     try:
         df = pd.read_excel(file)
-        df.columns = df.columns.str.strip().str.upper()
+    except Exception:
+        pass
+    
+    if df is None:
+        try:
+            file.seek(0)
+            df = pd.read_csv(file, sep=';', encoding='latin-1', on_bad_lines='skip')
+            if len(df.columns) < 2:
+                file.seek(0)
+                df = pd.read_csv(file, sep=',', encoding='latin-1', on_bad_lines='skip')
+        except Exception:
+            pass
+
+    if df is None:
+        try:
+            file.seek(0)
+            df = pd.read_csv(file, sep=',', encoding='utf-8', on_bad_lines='skip')
+        except Exception:
+            pass
+
+    if df is not None:
+        df = smart_header_detection(df)
+        df.columns = df.columns.astype(str).str.strip().str.upper()
         return df
-    except Exception:
-        pass
-    try:
-        file.seek(0)
-        df = pd.read_csv(file, sep=';', encoding='latin-1', on_bad_lines='skip')
-        if len(df.columns) > 1:
-            df.columns = df.columns.str.strip().str.upper()
-            return df
-    except Exception:
-        pass
-    try:
-        file.seek(0)
-        df = pd.read_csv(file, sep=',', encoding='utf-8', on_bad_lines='skip')
-        if len(df.columns) > 1:
-            df.columns = df.columns.str.strip().str.upper()
-            return df
-    except Exception:
-        pass
+
     return None
 
 def extract_year(filename):
@@ -84,7 +111,6 @@ extended_palette = (
 )
 
 # --- GESTION COULEURS H/F STRICTE ---
-# Hommes = Bleu Clair (#87CEEB), Femmes = Bleu Foncé (#00008B)
 COLOR_MAP_SEXE = {
     'H': '#87CEEB', 'M': '#87CEEB', 'HOMME': '#87CEEB', 'HOMMES': '#87CEEB',
     'F': '#00008B', 'FEMME': '#00008B', 'FEMMES': '#00008B'
@@ -93,13 +119,13 @@ COLOR_MAP_SEXE = {
 def get_gender_color(val):
     val_str = str(val).upper().strip()
     if val_str.startswith('H') or val_str.startswith('M'):
-        return '#87CEEB' # Bleu Clair
+        return '#87CEEB' 
     elif val_str.startswith('F'):
-        return '#00008B' # Bleu Foncé
-    return '#808080' # Gris si inconnu
+        return '#00008B' 
+    return '#808080' 
 
 # ==========================================
-# 🚀 NAVIGATION (SIDEBAR)
+# 🚀 NAVIGATION & CHARGEMENT (SIDEBAR)
 # ==========================================
 if os.path.exists(LOGO_FILE):
     st.sidebar.image(LOGO_FILE, width=180)
@@ -110,22 +136,28 @@ menu_options = [
     "🔺 Pyramides & Ratios",
     "📍 Cartographie Structures",
     "🧿 Micro-Analyse",
+    "🚪 Analyse des Sorties (Turn-over)",
     "📈 Évolution Effectifs",
     "📋 Types de Contrat",
     "📉 Flux (Histo Décalé)",
     "📊 Absentéisme (Évolution)",
     "⚖️ Absentéisme (Comparaison)",
     "💰 Autres (Promo/Form/Rém)",
-    "📝 Qualitatif / Restrictions"
+    "📝 Restrictions Santé"
 ]
 
 selection_page = st.sidebar.radio("Aller vers :", menu_options)
 
 st.sidebar.markdown("---")
-st.sidebar.header("Données Sources")
-uploaded_files = st.sidebar.file_uploader("Chargez vos fichiers", accept_multiple_files=True)
+st.sidebar.header("1. Données Effectifs (Stock)")
+uploaded_files = st.sidebar.file_uploader("Chargez vos fichiers annuels", accept_multiple_files=True)
+
+st.sidebar.header("2. Données Sorties (Flux)")
+uploaded_file_sorties = st.sidebar.file_uploader("Fichier 'Sorties' unique (Optionnel)", accept_multiple_files=False, help="Colonnes attendues: Matricule, Sexe, Entrée, Naissance, Sortie, Motif, Service, Emploi, Contrat")
+
 min_eff_global = st.sidebar.slider("Taille min. groupes (Bulles)", 1, 20, 3, help="Masque les petits groupes sur les cartes.")
 
+# --- TRAITEMENT FICHIERS STOCK ---
 data_dict = {}
 combined_df = pd.DataFrame()
 
@@ -136,14 +168,12 @@ if uploaded_files:
         if year:
             df = load_data(f)
             if df is not None:
-                # Renommage standard
                 rename_map = {
                     'SERVICE / SECTEUR': 'SERVICE', 'SECTEUR': 'SERVICE', 'UNITÉ': 'SERVICE', 'AGENCE': 'SERVICE',
                     'DURÉE DU TRAVAIL': 'TEMPS_TRAVAIL',
                     'ARRIVÉE': 'ENTREE', 'DATE ENTREE': 'ENTREE', 'DATE D\'ENTRÉE': 'ENTREE',
                     'NAISSANCE': 'NAISSANCE', 'DATE NAISSANCE': 'NAISSANCE',
                     'TYPE CONTRAT': 'CONTRAT', 'NATURE CONTRAT': 'CONTRAT', 'STATUT': 'CONTRAT',
-                    # Pour le qualitatif
                     'RESTRICTIONS': 'RESTRICTION', 'RESTRICTION': 'RESTRICTION', 'AVIS': 'RESTRICTION', 
                     'COMMENTAIRE': 'RESTRICTION', 'APTITUDE': 'RESTRICTION'
                 }
@@ -151,7 +181,6 @@ if uploaded_files:
                 df = df.rename(columns=cols_to_rename)
                 df['ANNEE_FICH'] = year
                 
-                # Calculs Age/Ancienneté
                 if 'NAISSANCE' in df.columns:
                     df['Date_Naiss'] = pd.to_datetime(df['NAISSANCE'], dayfirst=True, errors='coerce')
                     df['AGE_CALC'] = year - df['Date_Naiss'].dt.year
@@ -168,10 +197,54 @@ if uploaded_files:
     if temp_dfs:
         combined_df = pd.concat(temp_dfs, ignore_index=True)
         sorted_years = sorted(data_dict.keys())
-        st.sidebar.success(f"✅ {len(data_dict)} années chargées")
+        st.sidebar.success(f"✅ Stock : {len(data_dict)} années")
         cat_cols = [c for c in ['SERVICE', 'EMPLOI', 'SEXE', 'CATEGORIE', 'POSTE'] if c in combined_df.columns]
     else:
         sorted_years = []
+
+# --- TRAITEMENT FICHIER SORTIES (ROBUSTE) ---
+df_sorties = pd.DataFrame()
+if uploaded_file_sorties:
+    df_s = load_data(uploaded_file_sorties)
+    if df_s is not None:
+        rename_map_s = {
+            'SERVICE / SECTEUR': 'SERVICE', 'SECTEUR': 'SERVICE',
+            'EMPLOI': 'EMPLOI', 'METIER': 'EMPLOI', 'POSTE': 'EMPLOI',
+            'GENRE': 'SEXE',
+            'DATE ENTREE': 'ENTREE', 'ENTRÉE': 'ENTREE',
+            'DATE NAISSANCE': 'NAISSANCE',
+            'SORTIE': 'SORTIE', 'SORTIES': 'SORTIE',
+            'DATE SORTIE': 'SORTIE', 'DATE DE SORTIE': 'SORTIE', 'FIN DE CONTRAT': 'SORTIE',
+            'DATE_SORTIE': 'SORTIE', 'D_SORTIE': 'SORTIE',
+            'MOTIF': 'MOTIF', 'RAISON': 'MOTIF',
+            'TYPE CONTRAT': 'CONTRAT', 'CONTRAT': 'CONTRAT'
+        }
+        cols_to_rename_s = {k: v for k, v in rename_map_s.items() if k in df_s.columns}
+        df_s = df_s.rename(columns=cols_to_rename_s)
+        
+        # Fallback intelligent
+        if 'SORTIE' not in df_s.columns:
+            for col in df_s.columns:
+                if "SORTIE" in col or "DEPART" in col or "FIN CONTRAT" in col:
+                    df_s = df_s.rename(columns={col: 'SORTIE'})
+                    break
+
+        if 'SORTIE' in df_s.columns:
+            df_s['Date_Sortie'] = pd.to_datetime(df_s['SORTIE'], dayfirst=True, errors='coerce')
+            df_s['ANNEE_SORTIE'] = df_s['Date_Sortie'].dt.year
+            
+            if 'NAISSANCE' in df_s.columns:
+                df_s['Date_Naiss'] = pd.to_datetime(df_s['NAISSANCE'], dayfirst=True, errors='coerce')
+                df_s['AGE_SORTIE'] = (df_s['Date_Sortie'] - df_s['Date_Naiss']).dt.days / 365.25
+                df_s['TRANCHE_AGE'] = pd.cut(df_s['AGE_SORTIE'], bins=[0,25,35,45,55,100], labels=['<25 ans','25-35 ans','35-45 ans','45-55 ans','55+ ans'])
+
+            if 'ENTREE' in df_s.columns:
+                df_s['Date_Entree'] = pd.to_datetime(df_s['ENTREE'], dayfirst=True, errors='coerce')
+                df_s['ANC_SORTIE'] = (df_s['Date_Sortie'] - df_s['Date_Entree']).dt.days / 365.25
+                df_s['TRANCHE_ANC'] = pd.cut(df_s['ANC_SORTIE'], bins=[0,1,3,5,10,100], labels=['<1 an','1-3 ans','3-5 ans','5-10 ans','10+ ans'])
+
+        df_sorties = df_s
+        st.sidebar.success(f"✅ Sorties : {len(df_sorties)} lignes")
 
 st.title("📊 Diag Flash RH_Eric PELTIER")
 
@@ -179,10 +252,11 @@ st.title("📊 Diag Flash RH_Eric PELTIER")
 # 📄 LOGIQUE DES PAGES
 # ==========================================
 
-if not combined_df.empty:
+if not combined_df.empty or not df_sorties.empty:
     
     # --- PAGE 1 : PYRAMIDES ---
     if selection_page == "🔺 Pyramides & Ratios":
+        if combined_df.empty: st.warning("Veuillez charger des fichiers Effectifs (Stock)."); st.stop()
         st.header("Analyse Structurelle : Pyramides et Indicateurs Clés")
         
         c_yr, c_var = st.columns(2)
@@ -190,7 +264,6 @@ if not combined_df.empty:
         var_pyr = c_var.selectbox("Variable", ["Âge", "Ancienneté"], key="pyr_var")
         
         df_pyr = data_dict[str(yr_pyr)].copy()
-        
         st.markdown("---")
         
         c_filt, c_subfilt = st.columns(2)
@@ -199,14 +272,12 @@ if not combined_df.empty:
         
         subset_df = df_pyr.copy()
         titre_complement = "Global"
-
         if mode_filtre != "Global (Toute l'entreprise)":
             valeurs_possibles = sorted(subset_df[mode_filtre].dropna().unique())
             val_retenue = c_subfilt.selectbox(f"Choisir {mode_filtre}", valeurs_possibles, key="pyr_val")
             subset_df = subset_df[subset_df[mode_filtre] == val_retenue]
             titre_complement = f"{mode_filtre} : {val_retenue}"
         
-        # --- INDICATEURS ---
         st.markdown("#### 🧭 Indicateurs de Vigilance")
         kpi1, kpi2 = st.columns(2)
         if 'AGE_CALC' in subset_df.columns:
@@ -227,17 +298,14 @@ if not combined_df.empty:
                 if nb_50plus > 0:
                     if ratio_renouv < 100: kpi2.error("⚠️ Non remplacement des départs (< 100%)")
                     else: kpi2.success("Renouvellement assuré")
-        
         st.markdown("---")
         
-        # CONTROLES PROCHES
         c_unit, c_split = st.columns(2)
         unit_display = c_unit.radio("Unité", ["Effectif (Nb)", "Pourcentage (%)"], horizontal=True)
         has_sex = 'SEXE' in subset_df.columns
         mode_split = c_split.radio("Affichage", ["Global (Ensemble)", "H/F Séparés (Papillon)"], horizontal=True, disabled=not has_sex)
         if not has_sex and mode_split == "H/F Séparés (Papillon)": mode_split = "Global (Ensemble)"
 
-        # PREPARATION DONNEES
         col_target_pyr = 'AGE_CALC' if var_pyr == "Âge" else 'ANC_CALC'
         if col_target_pyr in subset_df.columns:
             bins = list(range(15, 80, 5)) if var_pyr == "Âge" else list(range(0, 45, 5))
@@ -258,9 +326,8 @@ if not combined_df.empty:
                 fig = px.bar(df_g, x='Tranche', y=val_col, text_auto='.1f' if 'Percent' in val_col else True,
                              title=f"Pyramide {titre_complement} ({yr_pyr})", color_discrete_sequence=['#1f77b4'])
                 fig.update_layout(xaxis_title="Tranches", yaxis_title=lbl_axis)
-                fig.update_traces(textangle=0) # Texte horizontal
+                fig.update_traces(textangle=0)
             else:
-                # TRI POUR LEGENDE : HOMMES D'ABORD, FEMMES ENSUITE
                 sexes = df_g['SEXE'].unique()
                 list_h = [s for s in sexes if str(s).upper().startswith('H') or str(s).upper().startswith('M')]
                 list_f = [s for s in sexes if str(s).upper().startswith('F')]
@@ -270,49 +337,37 @@ if not combined_df.empty:
                     d = df_g[df_g['SEXE'] == s]
                     val_plot = d[val_col]
                     col_bar = get_gender_color(s)
-                    
                     is_man = str(s).upper().startswith('H') or str(s).upper().startswith('M')
-                    if is_man:
-                        val_plot = val_plot * -1 
+                    if is_man: val_plot = val_plot * -1 
                     
                     fig.add_trace(go.Bar(
-                        y=d['Tranche'], x=val_plot, name=str(s), orientation='h', 
-                        marker_color=col_bar,
-                        text=d[val_col].round(1) if 'Percent' in val_col else d[val_col],
-                        textangle=0 # Force texte horizontal
+                        y=d['Tranche'], x=val_plot, name=str(s), orientation='h', marker_color=col_bar,
+                        text=d[val_col].round(1) if 'Percent' in val_col else d[val_col], textangle=0
                     ))
                 
                 fig.update_layout(
-                    title=f"Pyramide {titre_complement} par Sexe ({yr_pyr})",
-                    barmode='overlay',
+                    title=f"Pyramide {titre_complement} par Sexe ({yr_pyr})", barmode='overlay',
                     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                    xaxis=dict(title=f"{lbl_axis} (Hommes à gauche / Femmes à droite)", tickformat="s"), 
-                    yaxis=dict(title="Tranches")
+                    xaxis=dict(title=f"{lbl_axis} (Hommes à gauche / Femmes à droite)", tickformat="s"), yaxis=dict(title="Tranches")
                 )
             
             st.plotly_chart(fig, use_container_width=True)
             csv_pyr = convert_df(df_g)
             st.download_button("📥 Télécharger (CSV)", data=csv_pyr, file_name='pyramide_data.csv', mime='text/csv')
-        else:
-            st.warning("Données manquantes.")
-
 
     # --- PAGE 2 : CARTOGRAPHIE ---
     elif selection_page == "📍 Cartographie Structures":
+        if combined_df.empty: st.warning("Veuillez charger des fichiers Effectifs (Stock)."); st.stop()
         st.header("Cartographie Structurelle")
         c1, c2, c3 = st.columns(3)
         mode_visu = c1.radio("Mode", ["Statique (1 année)", "Dynamique (Évolution)"])
         grp_tri = c2.selectbox("Maille", cat_cols)
         critere = c3.selectbox("Critère", ["Âge", "Ancienneté"])
-
         st.markdown("---")
-        
-        # REGLAGE MANUEL DES AXES
         st.markdown("#### ⚙️ Réglage des Axes")
         c_min, c_max = st.columns(2)
         user_min = c_min.number_input("Seuil Minimum (%)", value=-5.0, step=1.0)
         user_max = c_max.number_input("Seuil Maximum (%)", value=100.0, step=5.0)
-        
         st.markdown("---")
 
         cs1, cs2, cs3 = st.columns(3)
@@ -328,7 +383,6 @@ if not combined_df.empty:
             s_high = cs2.slider("Anc. Min 'Anciens'", 10, 30, 15)
             lbl_x, lbl_y = f"% Anciens (>{s_high} ans)", f"% Nouveaux (<{s_low} ans)"
             lbl_short = "d'Ancienneté"
-        
         show_labels = cs3.checkbox("Afficher les étiquettes", value=False)
 
         def get_stats(df_in, group_col, val_col, low, high, min_eff):
@@ -346,18 +400,12 @@ if not combined_df.empty:
                     })
             return pd.DataFrame(res)
         
-        axis_style = dict(
-            range=[user_min, user_max], 
-            showline=True, linewidth=1, linecolor='black', mirror=True, 
-            showgrid=True, gridcolor='#eee', zeroline=True, zerolinewidth=1, zerolinecolor='grey'
-        )
+        axis_style = dict(range=[user_min, user_max], showline=True, linewidth=1, linecolor='black', mirror=True, showgrid=True, gridcolor='#eee', zeroline=True, zerolinewidth=1, zerolinecolor='grey')
 
         if mode_visu == "Statique (1 année)":
             y_photo = st.selectbox("Année", sorted_years, index=len(sorted_years)-1, key="tri_yr")
             titre_graph = f"Structure {lbl_short} par {grp_tri} en {y_photo}"
             all_groups = sorted(data_dict[str(y_photo)][grp_tri].dropna().unique())
-            
-            # AJOUT CASE TOUT SELECTIONNER (STATIQUE)
             c_sel_static, c_all_static = st.columns([3, 1])
             with c_all_static:
                 st.write("")
@@ -370,30 +418,20 @@ if not combined_df.empty:
                 df_source = data_dict[str(y_photo)]
                 df_source = df_source[df_source[grp_tri].isin(sel_groups)]
                 df_viz = get_stats(df_source, grp_tri, val_col, s_low, s_high, min_eff_global)
-                
                 if not df_viz.empty:
-                    fig = px.scatter(df_viz, x='Pct_High', y='Pct_Low', size='Effectif', color='Groupe', 
-                                     hover_name='Full_Name', 
-                                     text='Groupe' if show_labels else None, 
-                                     title=titre_graph, labels={'Pct_High': lbl_x, 'Pct_Low': lbl_y}, 
-                                     size_max=45, color_discrete_sequence=extended_palette)
-                    
+                    fig = px.scatter(df_viz, x='Pct_High', y='Pct_Low', size='Effectif', color='Groupe', hover_name='Full_Name', text='Groupe' if show_labels else None, title=titre_graph, labels={'Pct_High': lbl_x, 'Pct_Low': lbl_y}, size_max=45, color_discrete_sequence=extended_palette)
                     if show_labels: fig.update_traces(textposition='top center')
-                    
                     fig.update_layout(height=700, xaxis=axis_style, yaxis=axis_style, legend=dict(orientation="v", yanchor="top", y=1, xanchor="left", x=1.02))
                     st.plotly_chart(fig, use_container_width=True)
-                else: st.warning(f"Données insuffisantes.")
 
         else: # DYNAMIQUE
             c_deb, c_fin = st.columns(2)
             y_deb = c_deb.selectbox("Départ", sorted_years, index=0, key="tri_d")
             y_fin = c_fin.selectbox("Arrivée", sorted_years, index=len(sorted_years)-1, key="tri_f")
             titre_graph = f"Évolution des structures {lbl_short} entre {y_deb} et {y_fin}"
-            
             grps_1 = set(data_dict[str(y_deb)][grp_tri].dropna().unique())
             grps_2 = set(data_dict[str(y_fin)][grp_tri].dropna().unique())
             common_grps = sorted(list(grps_1 & grps_2))
-            
             c_sel_traj, c_all_traj = st.columns([3, 1])
             with c_all_traj:
                 st.write("")
@@ -407,36 +445,21 @@ if not combined_df.empty:
                 df_2 = data_dict[str(y_fin)][data_dict[str(y_fin)][grp_tri].isin(sel_traj)]
                 viz_1 = get_stats(df_1, grp_tri, val_col, s_low, s_high, min_eff_global)
                 viz_2 = get_stats(df_2, grp_tri, val_col, s_low, s_high, min_eff_global)
-                
                 if not viz_1.empty and not viz_2.empty:
                     merged = pd.merge(viz_1, viz_2, on='Groupe', suffixes=('_start', '_end'))
                     fig = go.Figure()
                     for i, row in merged.iterrows():
                         color = extended_palette[i % len(extended_palette)]
-                        fig.add_trace(go.Scatter(
-                            x=[row['Pct_High_start']], y=[row['Pct_Low_start']], 
-                            mode='markers', marker=dict(symbol='circle-open', size=10, color=color), 
-                            name=f"{row['Full_Name_start']}", 
-                            hovertext=f"{row['Full_Name_start']} ({y_deb})",
-                            showlegend=False
-                        ))
+                        fig.add_trace(go.Scatter(x=[row['Pct_High_start']], y=[row['Pct_Low_start']], mode='markers', marker=dict(symbol='circle-open', size=10, color=color), name=f"{row['Full_Name_start']}", hovertext=f"{row['Full_Name_start']} ({y_deb})", showlegend=False))
                         mode_point = 'markers+text' if show_labels else 'markers'
-                        fig.add_trace(go.Scatter(
-                            x=[row['Pct_High_end']], y=[row['Pct_Low_end']], 
-                            mode=mode_point, marker=dict(symbol='circle', size=12, color=color), 
-                            text=row['Groupe'] if show_labels else None, textposition='top center', 
-                            name=f"{row['Full_Name_end']}",
-                            hovertext=f"{row['Full_Name_end']} ({y_fin})"
-                        ))
+                        fig.add_trace(go.Scatter(x=[row['Pct_High_end']], y=[row['Pct_Low_end']], mode=mode_point, marker=dict(symbol='circle', size=12, color=color), text=row['Groupe'] if show_labels else None, textposition='top center', name=f"{row['Full_Name_end']}", hovertext=f"{row['Full_Name_end']} ({y_fin})"))
                         fig.add_annotation(x=row['Pct_High_end'], y=row['Pct_Low_end'], ax=row['Pct_High_start'], ay=row['Pct_Low_start'], xref="x", yref="y", axref="x", ayref="y", showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2, arrowcolor=color)
-                    
-                    fig.update_layout(title=titre_graph, xaxis_title=lbl_x, yaxis_title=lbl_y, height=700, 
-                                      xaxis=axis_style, yaxis=axis_style,
-                                      legend=dict(orientation="v", yanchor="top", y=1, xanchor="left", x=1.02)) 
+                    fig.update_layout(title=titre_graph, xaxis_title=lbl_x, yaxis_title=lbl_y, height=700, xaxis=axis_style, yaxis=axis_style, legend=dict(orientation="v", yanchor="top", y=1, xanchor="left", x=1.02)) 
                     st.plotly_chart(fig, use_container_width=True)
 
     # --- PAGE 3 : MICRO-ANALYSE ---
     elif selection_page == "🧿 Micro-Analyse":
+        if combined_df.empty: st.warning("Veuillez charger des fichiers Effectifs (Stock)."); st.stop()
         st.header("🧿 Micro-Analyse : Croisement Âge / Ancienneté")
         c_yr_n, c_filt_n, c_col_n = st.columns(3)
         yr_nuage = c_yr_n.selectbox("Année", sorted_years, index=len(sorted_years)-1, key="nuage_year")
@@ -460,19 +483,13 @@ if not combined_df.empty:
         color_by = c_col_n.selectbox("Colorier les points par", opts_color, index=default_idx, key="nuage_color")
         
         if 'AGE_CALC' in df_nuage.columns and 'ANC_CALC' in df_nuage.columns:
-            # GESTION COULEUR
             plot_color = None
             params_color = {}
-            
-            if color_by == "Aucun (Couleur unique)":
-                 params_color['color_discrete_sequence'] = ['#1f77b4'] # Bleu unique standard
+            if color_by == "Aucun (Couleur unique)": params_color['color_discrete_sequence'] = ['#1f77b4']
             else:
                 plot_color = color_by
-                if color_by == "SEXE": 
-                    # Mapping H/F spécifique
-                    params_color['color_discrete_map'] = COLOR_MAP_SEXE # CORRECTION ICI
-                else:
-                    params_color['color_discrete_sequence'] = extended_palette
+                if color_by == "SEXE": params_color['color_discrete_map'] = COLOR_MAP_SEXE
+                else: params_color['color_discrete_sequence'] = extended_palette
             
             hover_cols = ['SERVICE', 'EMPLOI', 'SEXE', 'CATEGORIE']
             real_hover_cols = [c for c in hover_cols if c in df_nuage.columns]
@@ -480,22 +497,153 @@ if not combined_df.empty:
             if plot_color and plot_color not in group_keys: group_keys.append(plot_color)
             
             df_agg = df_nuage.groupby(group_keys, observed=False).size().reset_index(name='NB_SALARIES')
-            
             titre_nuage = f"Répartition Individuelle ({len(df_nuage)} agents)"
             if selection_val: titre_nuage += f" - {selection_val}"
 
-            fig = px.scatter(df_agg, x='AGE_CALC', y='ANC_CALC', color=plot_color, 
-                             size='NB_SALARIES', 
-                             hover_data=real_hover_cols + ['NB_SALARIES'], title=titre_nuage,
-                             opacity=0.8, size_max=12, **params_color)
-            
+            fig = px.scatter(df_agg, x='AGE_CALC', y='ANC_CALC', color=plot_color, size='NB_SALARIES', hover_data=real_hover_cols + ['NB_SALARIES'], title=titre_nuage, opacity=0.8, size_max=12, **params_color)
             fig.add_shape(type="line", x0=20, y0=0, x1=65, y1=45, line=dict(color="lightgray", dash="dot"))
             fig.update_traces(hovertemplate='<b>%{hovertext}</b><br>Âge: %{x}<br>Anc: %{y}<br><b>Effectif: %{marker.size}</b>')
             fig.update_layout(xaxis_title="Âge", yaxis_title="Ancienneté", height=650)
             st.plotly_chart(fig, use_container_width=True)
 
-    # --- PAGE 4 : EVOLUTION EFFECTIFS ---
+    # --- PAGE 4 (NOUVEAU) : SORTIES / TURNOVER ---
+    elif selection_page == "🚪 Analyse des Sorties (Turn-over)":
+        st.header("🚪 Analyse des Sorties (Turn-over)")
+        
+        if df_sorties.empty:
+            st.info("ℹ️ Veuillez charger le fichier 'Sorties' dans le menu latéral (Zone 2) pour activer cet onglet.")
+        else:
+            if 'ANNEE_SORTIE' in df_sorties.columns:
+                years_available = sorted(df_sorties['ANNEE_SORTIE'].dropna().unique())
+                
+                # Ajout du Tab 3 : Micro-Analyse
+                tabs_sorties = st.tabs(["📉 Évolution Temporelle", "🥧 Répartition / Structure", "🧿 Micro-Analyse (Nuage de points)"])
+                
+                # ONGLET 1 : EVOLUTION
+                with tabs_sorties[0]:
+                    st.subheader("Évolution du nombre de départs par an")
+                    c1, c2 = st.columns(2)
+                    dims_evo = ["Global", "SERVICE", "EMPLOI", "SEXE", "MOTIF", "CONTRAT"]
+                    dims_evo = [d for d in dims_evo if d == "Global" or d in df_sorties.columns]
+                    
+                    dim_evo = c1.selectbox("Axe d'analyse", dims_evo)
+                    
+                    if dim_evo == "Global":
+                        df_evo = df_sorties.groupby("ANNEE_SORTIE").size().reset_index(name="Nombre de Sorties")
+                        fig = px.bar(df_evo, x="ANNEE_SORTIE", y="Nombre de Sorties", text="Nombre de Sorties",
+                                     title="Évolution globale des sorties", color_discrete_sequence=['#d62728']) 
+                    else:
+                        df_evo = df_sorties.groupby(["ANNEE_SORTIE", dim_evo]).size().reset_index(name="Nombre de Sorties")
+                        params_col = {}
+                        if dim_evo == "SEXE": params_col['color_discrete_map'] = COLOR_MAP_SEXE
+                        else: params_col['color_discrete_sequence'] = extended_palette
+                        
+                        fig = px.bar(df_evo, x="ANNEE_SORTIE", y="Nombre de Sorties", color=dim_evo,
+                                     title=f"Évolution des sorties par {dim_evo}", **params_col)
+                    
+                    fig.update_layout(xaxis=dict(tickmode='linear'), xaxis_title="Année de Sortie")
+                    st.plotly_chart(fig, use_container_width=True)
+
+                # ONGLET 2 : REPARTITION
+                with tabs_sorties[1]:
+                    st.subheader("Répartition et Structure des Sorties")
+                    c1, c2 = st.columns(2)
+                    yrs_sel = c1.multiselect("Années à inclure", years_available, default=years_available)
+                    
+                    dims_rep = ["SERVICE", "EMPLOI", "SEXE", "MOTIF", "CONTRAT", "TRANCHE_AGE", "TRANCHE_ANC"]
+                    dims_rep = [d for d in dims_rep if d in df_sorties.columns]
+                    dim_rep = c2.selectbox("Critère de répartition", dims_rep)
+                    
+                    if yrs_sel:
+                        df_sub = df_sorties[df_sorties['ANNEE_SORTIE'].isin(yrs_sel)]
+                        if not df_sub.empty:
+                            df_count = df_sub.groupby(dim_rep).size().reset_index(name="Count")
+                            type_chart = st.radio("Type de graphique", ["Camembert (Pie)", "Barres"], horizontal=True)
+                            
+                            params_col = {}
+                            if dim_rep == "SEXE": params_col['color_discrete_map'] = COLOR_MAP_SEXE
+                            else: params_col['color_discrete_sequence'] = extended_palette
+                            
+                            if type_chart == "Camembert (Pie)":
+                                fig = px.pie(df_count, names=dim_rep, values="Count", title=f"Répartition par {dim_rep}", **params_col)
+                            else:
+                                fig = px.bar(df_count, x=dim_rep, y="Count", color=dim_rep, title=f"Répartition par {dim_rep}", **params_col)
+                            
+                            st.plotly_chart(fig, use_container_width=True)
+                            st.markdown("##### Données détaillées")
+                            st.dataframe(df_count, hide_index=True)
+                        else: st.warning("Aucune donnée pour les années sélectionnées.")
+                    else: st.info("Sélectionnez au moins une année.")
+                
+                # ONGLET 3 : MICRO-ANALYSE (FIXED)
+                with tabs_sorties[2]:
+                    st.subheader("Micro-Analyse : Caractéristiques des Sortants (Âge vs Ancienneté)")
+                    
+                    if 'AGE_SORTIE' in df_sorties.columns and 'ANC_SORTIE' in df_sorties.columns:
+                        c_yrs_m, c_grp_m, c_col_m = st.columns(3)
+                        yrs_micro = c_yrs_m.multiselect("Années à analyser", years_available, default=years_available, key="micro_s_yr")
+                        
+                        dims_filter = ["Global", "SERVICE", "EMPLOI", "MOTIF", "SEXE"]
+                        dims_filter = [d for d in dims_filter if d == "Global" or d in df_sorties.columns]
+                        lvl_filter = c_grp_m.selectbox("Filtrer la population", dims_filter, key="micro_s_lvl")
+                        
+                        df_m = df_sorties[df_sorties['ANNEE_SORTIE'].isin(yrs_micro)].copy()
+                        
+                        sel_val_m = None
+                        if lvl_filter != "Global":
+                            vals_m = sorted(df_m[lvl_filter].dropna().unique())
+                            sel_val_m = st.selectbox(f"Choisir {lvl_filter}", vals_m, key="micro_s_val")
+                            df_m = df_m[df_m[lvl_filter] == sel_val_m]
+                            
+                        avail_cols_m = [c for c in df_m.columns if c in cat_cols or c == 'MOTIF']
+                        opts_color_m = ["Aucun (Couleur unique)"] + avail_cols_m
+                        color_by_m = c_col_m.selectbox("Colorier les points par", opts_color_m, key="micro_s_col")
+                        
+                        if not df_m.empty:
+                            df_m['Age_R'] = df_m['AGE_SORTIE'].round()
+                            df_m['Anc_R'] = df_m['ANC_SORTIE'].round()
+                            
+                            params_color_m = {}
+                            plot_color_m = None
+                            
+                            if color_by_m == "Aucun (Couleur unique)":
+                                params_color_m['color_discrete_sequence'] = ['#d62728']
+                            else:
+                                plot_color_m = color_by_m
+                                if color_by_m == "SEXE": params_color_m['color_discrete_map'] = COLOR_MAP_SEXE
+                                else: params_color_m['color_discrete_sequence'] = extended_palette
+                            
+                            grp_keys_m = ['Age_R', 'Anc_R']
+                            # CORRECTION ICI : On ne demande pas de colonnes de survol qui ne sont pas dans le groupement
+                            hover_cols_m = ['SERVICE', 'EMPLOI', 'MOTIF', 'SEXE']
+                            
+                            if plot_color_m and plot_color_m not in grp_keys_m: grp_keys_m.append(plot_color_m)
+                            
+                            df_agg_m = df_m.groupby(grp_keys_m, observed=False).size().reset_index(name='Count')
+                            
+                            # On ne garde que les colonnes de survol qui sont REELLEMENT dans le dataframe aggrégé
+                            real_hover_m = [c for c in hover_cols_m if c in df_agg_m.columns]
+                            
+                            fig_m = px.scatter(df_agg_m, x='Age_R', y='Anc_R', size='Count', color=plot_color_m,
+                                               title=f"Profil des Sorties ({len(df_m)} départs)",
+                                               hover_data=real_hover_m + ['Count'],
+                                               opacity=0.7, size_max=15, **params_color_m)
+                            
+                            fig_m.add_shape(type="line", x0=20, y0=0, x1=65, y1=45, line=dict(color="lightgray", dash="dot"))
+                            fig_m.update_traces(hovertemplate='<b>%{hovertext}</b><br>Âge: %{x}<br>Anc: %{y}<br><b>Sorties: %{marker.size}</b>')
+                            fig_m.update_layout(xaxis_title="Âge au départ", yaxis_title="Ancienneté au départ", height=600)
+                            
+                            st.plotly_chart(fig_m, use_container_width=True)
+                        else:
+                            st.warning("Aucune donnée avec ces filtres.")
+                    else:
+                        st.error("Données d'âge ou d'ancienneté manquantes (Colonnes NAISSANCE/ENTREE).")
+
+            else: st.error("Le fichier 'Sorties' ne contient pas de date de sortie valide.")
+
+    # --- PAGE 5 : EVOLUTION EFFECTIFS ---
     elif selection_page == "📈 Évolution Effectifs":
+        if combined_df.empty: st.warning("Veuillez charger des fichiers Effectifs (Stock)."); st.stop()
         st.header("📈 Évolution des Effectifs")
         c_filt_eff, c_sub_eff = st.columns(2)
         opts_eff = ["Global"] + cat_cols
@@ -515,8 +663,9 @@ if not combined_df.empty:
         fig.update_xaxes(type='category')
         st.plotly_chart(fig, use_container_width=True)
 
-    # --- PAGE 5 : TYPES DE CONTRAT ---
+    # --- PAGE 6 : TYPES DE CONTRAT ---
     elif selection_page == "📋 Types de Contrat":
+        if combined_df.empty: st.warning("Veuillez charger des fichiers Effectifs (Stock)."); st.stop()
         st.header("📋 Analyse des Types de Contrat")
         if 'CONTRAT' in combined_df.columns:
             c_filt_ctr, c_sub_ctr = st.columns(2)
@@ -541,8 +690,9 @@ if not combined_df.empty:
         else:
             st.info("Colonne 'TYPE CONTRAT' ou 'STATUT' non trouvée dans les fichiers.")
 
-    # --- PAGE 6 : FLUX ---
+    # --- PAGE 7 : FLUX ---
     elif selection_page == "📉 Flux (Histo Décalé)":
+        if combined_df.empty: st.warning("Veuillez charger des fichiers Effectifs (Stock)."); st.stop()
         st.header("Histogrammes décalés")
         c_var, c_start, c_end = st.columns(3)
         var_analyse = c_var.radio("Axe", ["Âge", "Ancienneté"], horizontal=True, key="flux_axe")
@@ -591,26 +741,23 @@ if not combined_df.empty:
                 idx_range = range(0, 75)
                 vc_proj = df_past['VAL_PROJ'].value_counts().reindex(idx_range, fill_value=0)
                 vc_reel = df_curr['VAL_REEL'].value_counts().reindex(idx_range, fill_value=0)
-                
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(x=vc_proj.index, y=vc_proj.values, name=f"Théorique ({y_start} + {shift} ans)", line=dict(color='orange', width=2, dash='dash')))
                 fig.add_trace(go.Scatter(x=vc_reel.index, y=vc_reel.values, name=f"Réel ({y_end})", fill='tozeroy', line=dict(color='#1f77b4', width=3)))
                 fig.update_layout(title=f"Histogramme Décalé - {filter_mode}", xaxis_title=label_x, yaxis_title="Effectif")
                 st.plotly_chart(fig, use_container_width=True)
 
-    # --- PAGE 7 : ABSENTEISME (EVOLUTION) ---
+    # --- PAGE 8 : ABSENTEISME (EVOLUTION) ---
     elif selection_page == "📊 Absentéisme (Évolution)":
+        if combined_df.empty: st.warning("Veuillez charger des fichiers Effectifs (Stock)."); st.stop()
         st.header("Diagnostic Absentéisme : Évolution des Poids")
         
-        # EXTENSION DE LA DETECTION DES COLONNES
         keywords_abs = ['NB J', 'NB H', 'ABS', 'NB AT', 'NB MP', 'NB D\'AT', 'ACCIDENT', 'MALADIE']
         all_abs_cols = [c for c in combined_df.columns if any(k in c for k in keywords_abs)]
-        # Exclusion FORMATION
         abs_cols_clean = [c for c in all_abs_cols if "FORMATION" not in c]
         
         if abs_cols_clean:
             st.info("💡 Comparez le poids d'un service dans l'effectif global vs son poids dans l'absentéisme.")
-            
             c_yrs_abs, c_grp_abs, c_ind_abs = st.columns(3)
             years_abs = c_yrs_abs.multiselect("Années à analyser", sorted_years, default=sorted_years, key="abs_yrs_img")
             grp_abs = c_grp_abs.selectbox("Axe (Service, Métier...)", cat_cols, key="abs_grp_img")
@@ -618,14 +765,11 @@ if not combined_df.empty:
             
             if years_abs and grp_abs and ind_abs:
                 df_period = combined_df[combined_df['ANNEE_FICH'].isin([int(y) for y in years_abs])]
-                
                 eff_total = len(df_period)
                 df_eff_dist = df_period.groupby(grp_abs).size().reset_index(name='Count')
                 df_eff_dist['Percentage'] = (df_eff_dist['Count'] / eff_total) * 100
                 df_eff_dist['Category'] = "1. % Part Effectif"
-                
                 final_data = [df_eff_dist[[grp_abs, 'Percentage', 'Category']]]
-                
                 for y in sorted(years_abs):
                     df_y = combined_df[combined_df['ANNEE_FICH'] == int(y)]
                     total_abs_y = df_y[ind_abs].sum()
@@ -634,21 +778,18 @@ if not combined_df.empty:
                         df_abs_dist['Percentage'] = (df_abs_dist['Sum_Abs'] / total_abs_y) * 100
                         df_abs_dist['Category'] = f"% Part {ind_abs} {y}"
                         final_data.append(df_abs_dist[[grp_abs, 'Percentage', 'Category']])
-                
                 df_viz_abs = pd.concat(final_data, ignore_index=True)
-                
                 fig = px.bar(df_viz_abs, x="Category", y="Percentage", color=grp_abs,
                              title=f"Évolution des poids : Effectif vs {ind_abs}",
                              color_discrete_sequence=extended_palette)
-                
-                # LEGENDE INVERSEE ICI AUSSI
                 fig.update_layout(barmode='stack', yaxis_title="Part (%)", xaxis_title="", legend_traceorder="reversed")
                 st.plotly_chart(fig, use_container_width=True)
         else:
             st.warning("Aucune donnée d'absentéisme pertinente détectée.")
 
-    # --- PAGE 8 : ABSENTEISME (COMPARAISON) ---
+    # --- PAGE 9 : ABSENTEISME (COMPARAISON) ---
     elif selection_page == "⚖️ Absentéisme (Comparaison)":
+        if combined_df.empty: st.warning("Veuillez charger des fichiers Effectifs (Stock)."); st.stop()
         st.header("⚖️ Répartition de l'Absentéisme par Motif")
         st.caption("Comparaison : Poids Effectif vs Poids de chaque motif d'absence (Cumul Période)")
         
@@ -660,19 +801,14 @@ if not combined_df.empty:
             c1, c2 = st.columns(2)
             years_comp = c1.multiselect("Années (Cumul)", sorted_years, default=sorted_years, key="abs_comp_yr")
             grp_comp = c2.selectbox("Axe d'analyse", cat_cols, key="abs_comp_grp")
-            
             if years_comp:
                 df_c = combined_df[combined_df['ANNEE_FICH'].isin([int(y) for y in years_comp])].copy()
-                
                 plot_data = []
-                # 1. Barre Effectif
                 tmp_eff = df_c.groupby(grp_comp, observed=True).size().reset_index(name='Valeur')
                 total_eff = tmp_eff['Valeur'].sum()
                 tmp_eff['Pct'] = (tmp_eff['Valeur'] / total_eff) * 100
                 tmp_eff['Indicateur'] = "1. % Effectif"
                 plot_data.append(tmp_eff[[grp_comp, 'Pct', 'Indicateur']])
-                
-                # 2. Barres Motifs
                 for m in abs_cols_clean:
                     tmp_abs = df_c.groupby(grp_comp, observed=True)[m].sum().reset_index(name='Valeur')
                     total_abs = tmp_abs['Valeur'].sum()
@@ -680,7 +816,6 @@ if not combined_df.empty:
                         tmp_abs['Pct'] = (tmp_abs['Valeur'] / total_abs) * 100
                         tmp_abs['Indicateur'] = m
                         plot_data.append(tmp_abs[[grp_comp, 'Pct', 'Indicateur']])
-                
                 if plot_data:
                     df_plot = pd.concat(plot_data, ignore_index=True)
                     fig = px.bar(df_plot, x="Indicateur", y="Pct", color=grp_comp,
@@ -688,15 +823,13 @@ if not combined_df.empty:
                                  color_discrete_sequence=extended_palette)
                     fig.update_layout(barmode='stack', barnorm='percent', yaxis_title="Part (%)", legend_traceorder="reversed")
                     st.plotly_chart(fig, use_container_width=True)
-                else:
-                    st.warning("Pas de données sur la période.")
-        else:
-            st.warning("Pas de colonnes d'absentéisme.")
+                else: st.warning("Pas de données sur la période.")
+        else: st.warning("Pas de colonnes d'absentéisme.")
 
-    # --- PAGE 9 : AUTRES INDICATEURS ---
+    # --- PAGE 10 : AUTRES INDICATEURS ---
     elif selection_page == "💰 Autres (Promo/Form/Rém)":
+        if combined_df.empty: st.warning("Veuillez charger des fichiers Effectifs (Stock)."); st.stop()
         st.header("Analyse des autres indicateurs (Sur-représentation)")
-        
         other_keywords = ['PROMO', 'FORMATION', 'REMUN', 'SALAIRE', 'AUGMENTATION']
         other_cols = [c for c in combined_df.columns if any(k in c for k in other_keywords)]
         
@@ -704,17 +837,14 @@ if not combined_df.empty:
             c1, c2 = st.columns(2)
             years_oth = c1.multiselect("Années (Cumul)", sorted_years, default=sorted_years, key="oth_yr")
             grp_oth = c2.selectbox("Axe d'analyse", cat_cols, key="oth_grp")
-            
             if years_oth:
                 df_c = combined_df[combined_df['ANNEE_FICH'].isin([int(y) for y in years_oth])].copy()
-                
                 plot_data = []
                 tmp_eff = df_c.groupby(grp_oth, observed=True).size().reset_index(name='Valeur')
                 total_eff = tmp_eff['Valeur'].sum()
                 tmp_eff['Pct'] = (tmp_eff['Valeur'] / total_eff) * 100
                 tmp_eff['Indicateur'] = "1. % Effectif"
                 plot_data.append(tmp_eff[[grp_oth, 'Pct', 'Indicateur']])
-                
                 for m in other_cols:
                     tmp_kpi = df_c.groupby(grp_oth, observed=True)[m].sum().reset_index(name='Valeur')
                     total_kpi = tmp_kpi['Valeur'].sum()
@@ -722,7 +852,6 @@ if not combined_df.empty:
                         tmp_kpi['Pct'] = (tmp_kpi['Valeur'] / total_kpi) * 100
                         tmp_kpi['Indicateur'] = m
                         plot_data.append(tmp_kpi[[grp_oth, 'Pct', 'Indicateur']])
-                
                 if plot_data:
                     df_plot = pd.concat(plot_data, ignore_index=True)
                     fig = px.bar(df_plot, x="Indicateur", y="Pct", color=grp_oth,
@@ -730,29 +859,22 @@ if not combined_df.empty:
                                  color_discrete_sequence=extended_palette)
                     fig.update_layout(barmode='stack', barnorm='percent', yaxis_title="Part (%)", legend_traceorder="reversed")
                     st.plotly_chart(fig, use_container_width=True)
-                else:
-                    st.warning("Pas de données non nulles sur la période.")
-        else:
-            st.info("Aucune colonne type 'Formation', 'Promotion' ou 'Rémunération' trouvée.")
+                else: st.warning("Pas de données non nulles sur la période.")
+        else: st.info("Aucune colonne type 'Formation', 'Promotion' ou 'Rémunération' trouvée.")
 
-    # --- PAGE 10 : QUALITATIF / RESTRICTIONS ---
-    elif selection_page == "📝 Qualitatif / Restrictions":
-        st.header("📝 Analyse Qualitative : Restrictions & Verbatims")
-        
+    # --- PAGE 11 : RESTRICTIONS SANTE ---
+    elif selection_page == "📝 Restrictions Santé":
+        if combined_df.empty: st.warning("Veuillez charger des fichiers Effectifs (Stock)."); st.stop()
+        st.header("📝 Analyse Qualitative : Restrictions Santé & Verbatims")
         if 'RESTRICTION' in combined_df.columns:
-            # AJOUT OPTION CUMUL
             opts_yr = sorted_years + ["Toutes les années (Cumul)"]
             c1, c2, c3 = st.columns(3)
             yr_qual = c1.selectbox("Année", opts_yr, index=len(opts_yr)-2 if len(opts_yr)>1 else 0, key="qual_yr")
             
-            if yr_qual == "Toutes les années (Cumul)":
-                df_qual = combined_df.copy()
-            else:
-                df_qual = data_dict[str(yr_qual)].copy()
+            if yr_qual == "Toutes les années (Cumul)": df_qual = combined_df.copy()
+            else: df_qual = data_dict[str(yr_qual)].copy()
 
-            # Filtrage des vides
             df_qual = df_qual[df_qual['RESTRICTION'].notna() & (df_qual['RESTRICTION'].astype(str).str.strip() != "")]
-            
             grp_qual = c2.selectbox("Filtrer par (Optionnel)", ["Global"] + cat_cols, key="qual_grp")
             val_qual = None
             if grp_qual != "Global":
@@ -760,17 +882,12 @@ if not combined_df.empty:
                 df_qual = df_qual[df_qual[grp_qual] == val_qual]
             
             st.markdown(f"**Nombre de verbatims trouvés : {len(df_qual)}**")
-            
             cols_show = ['ANNEE_FICH', 'SERVICE', 'EMPLOI', 'RESTRICTION']
             if 'SEXE' in df_qual.columns: cols_show.insert(3, 'SEXE')
-            
             st.dataframe(df_qual[cols_show], use_container_width=True, hide_index=True)
-            
             csv = convert_df(df_qual[cols_show])
             st.download_button("📥 Télécharger les verbatims (CSV)", data=csv, file_name='verbatims_restrictions.csv', mime='text/csv')
-            
-        else:
-            st.info("Aucune colonne de type 'RESTRICTION', 'AVIS' ou 'APTITUDE' trouvée dans le fichier.")
+        else: st.info("Aucune colonne de type 'RESTRICTION', 'AVIS' ou 'APTITUDE' trouvée dans le fichier.")
 
 else:
     st.info("👈 Veuillez charger vos fichiers Excel ou CSV dans le menu à gauche.")
