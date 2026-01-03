@@ -7,13 +7,13 @@ import numpy as np
 import os
 
 # --- CONFIGURATION DE LA PAGE ---
-st.set_page_config(page_title="Diag Flash RH_Eric PELTIER", layout="wide")
+st.set_page_config(page_title="Diag Flash Données Sociales", layout="wide")
 
 # ==========================================
 # 🔒 SÉCURITÉ
 # ==========================================
 MOT_DE_PASSE = "ericpeltier"
-LOGO_FILE = "logoE2.png" 
+LOGO_FILE = "logoE5.png" 
 
 if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
@@ -246,7 +246,7 @@ if uploaded_file_sorties:
         df_sorties = df_s
         st.sidebar.success(f"✅ Sorties : {len(df_sorties)} lignes")
 
-st.title("📊 Diag Flash RH_Eric PELTIER")
+st.title("Diag Flash Données Sociales_Application conçue par Eric PELTIER")
 
 # ==========================================
 # 📄 LOGIQUE DES PAGES
