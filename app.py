@@ -269,11 +269,10 @@ if selection_page == "📚 Ressources & Guides":
             
             st.link_button("ANACT : Travail des Seniors", "https://www.anact.fr/travail-seniors", use_container_width=True)
             st.link_button("GIS CREAPT (Cnam) : Expérience & Âge", "https://ceet.cnam.fr/partenariats/gis-creapt/centre-de-recherches-sur-l-experience-l-age-et-les-populations-au-travail-creapt--959490.kjsp", use_container_width=True)
-            st.link_button("Code du Travail Numérique", "https://code.travail.gouv.fr", use_container_width=True)
 
         with c2:
             st.markdown("#### 📖 Bibliographie")
-            st.markdown("**« Le travail au fil de l'âge »**")
+            st.markdown("**« La démographie du travail pour anticiper le vieillissement »**")
             st.caption("De Serge Volkoff et Anne-Françoise Molinié")
             st.markdown("Un ouvrage de référence sur l'ergonomie et la démographie du travail.")
             
@@ -316,7 +315,7 @@ elif not combined_df.empty or not df_sorties.empty:
                 nb_50plus = len(subset_df[subset_df['AGE_CALC'] >= 50])
                 ratio_renouv = (nb_30minus / nb_50plus * 100) if nb_50plus > 0 else 0
                 
-                kpi1.metric("Ratio de Basculement (Age ≥ 40)", f"{ratio_basc:.1f}%")
+                kpi1.metric("Ratio de Basculement (Age ≥ 40 / Effectif total)", f"{ratio_basc:.1f}%")
                 if ratio_basc > 50: kpi1.error("⚠️ Processus de vieillissement (> 50%)")
                 else: kpi1.success("Structure jeune")
                 
