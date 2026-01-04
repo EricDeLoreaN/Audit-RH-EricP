@@ -196,17 +196,13 @@ selection_page = st.sidebar.radio("Aller vers :", menu_options)
 
 st.sidebar.markdown("---")
 
-# On cache les uploaders sur la page Ressources
-if selection_page != "📚 Ressources":
-    st.sidebar.header("1. Données Effectifs (Stock)")
-    uploaded_files = st.sidebar.file_uploader("Chargez vos fichiers annuels", accept_multiple_files=True)
+# On garde les uploaders TOUT LE TEMPS pour éviter de perdre les fichiers
+st.sidebar.header("1. Données Effectifs (Stock)")
+uploaded_files = st.sidebar.file_uploader("Chargez vos fichiers annuels", accept_multiple_files=True)
 
-    st.sidebar.header("2. Données Sorties (Flux)")
-    uploaded_file_sorties = st.sidebar.file_uploader("Fichier 'Sorties' unique (Optionnel)", accept_multiple_files=False)
+st.sidebar.header("2. Données Sorties (Flux)")
+uploaded_file_sorties = st.sidebar.file_uploader("Fichier 'Sorties' unique (Optionnel)", accept_multiple_files=False)
     
-else:
-    uploaded_files = []
-    uploaded_file_sorties = None
 
 # --- TRAITEMENT FICHIERS STOCK ---
 data_dict = {}
