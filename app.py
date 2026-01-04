@@ -721,7 +721,7 @@ elif not combined_df.empty or not df_sorties.empty:
                     afficher_astuce_legende()
                     st.plotly_chart(fig, use_container_width=True)
                     
-                    st.warning("⚠️ **Note d'interprétation :** Si les embauches sont exclusivement liée à des remplacements de départs en retraite et si un point ne bouge pas ou continue d'aller vers la droite malgré un remplacement des départs en retraite à 100% par des jeunes de moins de 30 ans, c'est que **le nombre de départs en retraite est limité** dans la période choisie pour impacter la structure globale. La population continue de vieillir")
+                    st.warning("⚠️ **Note d'interprétation :** Si les embauches sont exclusivement liées à des remplacements de départs en retraite et si un point ne bouge pas ou continue d'aller vers la droite malgré un remplacement des départs en retraite à 100% par des jeunes de moins de 30 ans, c'est que **le nombre de départs en retraite est limité** dans la période choisie pour impacter la structure globale. La population continue de vieillir")
 
 
     elif selection_page == "🧿 Ages Vs Anciennetés":
