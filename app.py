@@ -15,6 +15,10 @@ st.set_page_config(page_title="Diag Flash Données Sociales", layout="wide")
 MOT_DE_PASSE = "ericpeltier"
 LOGO_FILE = "logoE5.png" 
 
+# Noms des fichiers images pour l'aide (à placer dans le dossier)
+IMG_GUIDE = "guide_triangulaire.png"
+IMG_RIPEURS = "exemple_ripeurs.png"
+
 if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
 
@@ -85,9 +89,64 @@ def extract_year(filename):
 def convert_df(df):
     return df.to_csv(index=False, sep=';', encoding='utf-8-sig')
 
-# --- FONCTION D'ASTUCE VISUELLE (NOUVEAU V17) ---
+# --- FONCTION D'ASTUCE VISUELLE ---
 def afficher_astuce_legende():
     st.caption("💡 **Astuce interactive :** Cliquez sur les éléments de la **légende** (à droite du graphique) pour les masquer/afficher. Double-cliquez pour isoler un élément.")
+
+# --- GUIDE DE LECTURE DIAGRAMME TRIANGULAIRE ---
+def afficher_guide_carto(critere):
+    terme_haut = "Jeunes (-30 ans)" if critere == "Âge" else "Nouveaux (-5 ans d'anc.)"
+    terme_bas = "Seniors (+50 ans)" if critere == "Âge" else "Anciens (+15 ans d'anc.)"
+    terme_milieu = "âges médians" if critere == "Âge" else "anciennetés médianes"
+    
+    with st.expander("💡 Comment lire et analyser un diagramme triangulaire ? (Cliquez pour dérouler l'aide et les exemples)", expanded=False):
+        
+        # 1. PARTIE LECTURE (IMAGE + TEXTE)
+        st.markdown("### 1️⃣ Comprendre le positionnement")
+        col_img_guide, col_txt_guide = st.columns([1, 1])
+        
+        with col_img_guide:
+            if os.path.exists(IMG_GUIDE):
+                st.image(IMG_GUIDE, caption="Schéma de lecture du diagramme triangulaire", use_container_width=True)
+            else:
+                st.info(f"Image '{IMG_GUIDE}' non trouvée. Placez-la dans le dossier.")
+        
+        with col_txt_guide:
+            st.markdown(f"""
+            Ce graphique positionne chaque groupe selon sa structure démographique :
+            * **En HAUT à GAUCHE ** : Forte proportion de **{terme_haut}**.
+            * **En BAS à DROITE ** : Forte proportion de **{terme_bas}**.
+            * **En BAS à GAUCHE ** : Concentration sur des {terme_milieu}.
+            
+            **Questions clés :**
+            * *Point en haut à gauche :* Métier-service en croissance ou fort turn-over (n'arrive pas à vieillir ou à fidéliser) ?
+            * *Point en bas à droite :* Départs en retraite massifs à venir ? Usure professionnelle ? Perte de compétences ?
+            """)
+
+        st.divider()
+
+        # 2. PARTIE EXEMPLE DYNAMIQUE (IMAGE + TEXTE)
+        st.markdown("### 2️⃣ Analyser les trajectoires (Mode Dynamique & Prospectif)")
+        st.markdown("**L'exemple type : Comparaison Ripeurs vs Chauffeurs**")
+        
+        col_img_ex, col_txt_ex = st.columns([1, 1])
+        
+        with col_img_ex:
+            if os.path.exists(IMG_RIPEURS):
+                st.image(IMG_RIPEURS, caption="Exemple : Ripeurs (stables) vs Chauffeurs (vieillissants)", use_container_width=True)
+            else:
+                st.info(f"Image '{IMG_RIPEURS}' non trouvée. Placez-la dans le dossier.")
+
+        with col_txt_ex:
+            st.markdown("""
+            En activant le mode **Dynamique** ou la **Simulation Prospective** :
+            
+            * **Si les points partent vers la droite (Ex: Chauffeurs) :** ➡ **Vieillissement naturel**. Les salariés prennent de l'âge.  
+              *Enjeu :* Santé, usure, aménagement de fin de carrière, anticipation des départs en retraite et du transfert de compétences.
+            
+            * **Si les points font du sur-place (Ex: Ripeurs) :** ➡ **On ne vieillit pas**. Les salariés ne restent pas dans ce service / métier (parcours interne ou externe).  
+              *Attention :* Recruter des jeunes ne suffit pas à rajeunir une structure si les départs en retraite sont peu nombreux ! C'est ce que permet de vérifier le mode **Prospective**.
+            """)
 
 # PALETTE COULEURS GENERALE
 extended_palette = (
@@ -122,14 +181,14 @@ menu_options = [
     "🔺 Pyramides",
     "📍 Diagrammes triangulaires",
     "🧿 Ages Vs Anciennetés",
-    "🚪 Analyse du Turn-over",
     "📈 Évolution Effectifs",
-    "📋 Types de Contrat",
     "📉 Histogrammes décalés",
     "📊 Absentéisme (Évolution)",
     "⚖️ Absentéisme (Comparaison)",
-    "💰 Autres (Promo/Form/Rém)",
+    "🚪 Analyse du Turn-over",
+    "📋 Types de Contrat",
     "📝 Restrictions Santé",
+    "💰 Autres (Promo/Form/Rém)",
     "📚 Ressources"
 ]
 
@@ -271,7 +330,7 @@ elif not combined_df.empty or not df_sorties.empty:
     
     if selection_page == "🔺 Pyramides":
         if combined_df.empty: st.warning("Veuillez charger des fichiers Effectifs (Stock)."); st.stop()
-        st.header("Analyse Structurelle : Pyramides et Indicateurs Clés")
+        st.header("Pyramides des Âges et des Anciennetés")
         
         c_yr, c_var = st.columns(2)
         yr_pyr = c_yr.selectbox("Année", sorted_years, index=len(sorted_years)-1, key="pyr_year")
@@ -372,13 +431,23 @@ elif not combined_df.empty or not df_sorties.empty:
 
     elif selection_page == "📍 Diagrammes triangulaires":
         if combined_df.empty: st.warning("Veuillez charger des fichiers Effectifs (Stock)."); st.stop()
-        st.header("Cartographie Structurelle")
+        st.header("Diagrammes triangulaires")
+        
+        # --- BLOC AIDE A L'ANALYSE (V20) ---
+        c_crit_aide, c_void = st.columns([1, 3])
+        
         c1, c2, c3 = st.columns(3)
-        mode_visu = c1.radio("Mode", ["Statique (1 année)", "Dynamique (Évolution)"])
+        # AJOUT MODE PROSPECTIVE (V22)
+        mode_visu = c1.radio("Mode", ["Statique (1 année)", "Dynamique (Rétrospective)", "Dynamique (Prospective)"])
         grp_tri = c2.selectbox("Maille", cat_cols)
         critere = c3.selectbox("Critère", ["Âge", "Ancienneté"])
+        
+        afficher_guide_carto(critere)
+        # -----------------------------------
+
         st.markdown("---")
         
+        # PARAMETRES COMMUNS
         st.markdown("#### ⚙️ Paramètres d'affichage")
         min_eff_carto = st.slider("Taille min. des groupes (0 = tout afficher)", 0, 20, 0, key="slider_min_eff")
 
@@ -404,15 +473,20 @@ elif not combined_df.empty or not df_sorties.empty:
             lbl_short = "d'Ancienneté"
         show_labels = cs3.checkbox("Afficher les étiquettes", value=False)
 
-        def get_stats(df_in, group_col, val_col, low, high, min_eff):
+        def get_stats(df_in, group_col, val_col, low, high, min_eff, year_label=None):
             if val_col not in df_in.columns: return pd.DataFrame()
             res = []
             for name, group in df_in.groupby(group_col, observed=True):
                 valid_group = group[group[val_col].notna()]
                 total = len(valid_group)
                 if total >= min_eff:
+                    # Utilisation d'un label personnalisé pour la simulation
+                    if year_label: current_year = year_label
+                    else: current_year = group['ANNEE_FICH'].iloc[0] if 'ANNEE_FICH' in group.columns else 0
+                    
                     res.append({
                         'Groupe': name, 'Effectif': total,
+                        'Year': current_year,
                         'Pct_Low': (len(valid_group[valid_group[val_col] < low]) / total) * 100,
                         'Pct_High': (len(valid_group[valid_group[val_col] >= high]) / total) * 100,
                         'Full_Name': name
@@ -420,6 +494,45 @@ elif not combined_df.empty or not df_sorties.empty:
             return pd.DataFrame(res)
         
         axis_style = dict(range=[user_min, user_max], showline=True, linewidth=1, linecolor='black', mirror=True, showgrid=True, gridcolor='#eee', zeroline=True, zerolinewidth=1, zerolinecolor='grey')
+
+        # --- FONCTION DE SIMULATION (MODIFIÉE V23) ---
+        def simulate_future(df_start, horizon_years, retirement_age, replacement_rate, group_col):
+            # On copie le DF de départ
+            df_sim = df_start.copy()
+            
+            # 1. On vieillit tout le monde (Âge + Ancienneté)
+            if 'AGE_CALC' in df_sim.columns: df_sim['AGE_CALC'] = df_sim['AGE_CALC'] + horizon_years
+            if 'ANC_CALC' in df_sim.columns: df_sim['ANC_CALC'] = df_sim['ANC_CALC'] + horizon_years
+            
+            # 2. On identifie les départs en retraite
+            leavers_indices = df_sim[df_sim['AGE_CALC'] >= retirement_age].index
+            nb_leavers_by_group = df_sim.loc[leavers_indices].groupby(group_col).size()
+            
+            # On retire les retraités
+            df_sim = df_sim.drop(leavers_indices)
+            
+            # 3. On gère les remplacements par groupe selon le taux choisi
+            new_hires_list = []
+            
+            for grp_name, nb_leavers in nb_leavers_by_group.items():
+                nb_to_hire = int(nb_leavers * replacement_rate) # Utilisation du taux personnalisé
+                
+                if nb_to_hire > 0:
+                    # On crée des profils jeunes (ex: 25 ans, 0 ancienneté)
+                    for _ in range(nb_to_hire):
+                        new_hire = {
+                            group_col: grp_name,
+                            'AGE_CALC': 25, # Jeune standard
+                            'ANC_CALC': 0,  # Nouvelle embauche
+                            'ANNEE_FICH': f"Proj +{horizon_years}"
+                        }
+                        new_hires_list.append(new_hire)
+            
+            if new_hires_list:
+                df_new = pd.DataFrame(new_hires_list)
+                df_sim = pd.concat([df_sim, df_new], ignore_index=True)
+                
+            return df_sim
 
         if mode_visu == "Statique (1 année)":
             y_photo = st.selectbox("Année", sorted_years, index=len(sorted_years)-1, key="tri_yr")
@@ -452,14 +565,20 @@ elif not combined_df.empty or not df_sorties.empty:
                     afficher_astuce_legende() # AJOUT TIP
                     st.plotly_chart(fig, use_container_width=True)
 
-        else: # DYNAMIQUE
-            c_deb, c_fin = st.columns(2)
+        elif mode_visu == "Dynamique (Rétrospective)":
+            c_deb, c_fin, c_opt = st.columns([1, 1, 2])
             y_deb = c_deb.selectbox("Départ", sorted_years, index=0, key="tri_d")
             y_fin = c_fin.selectbox("Arrivée", sorted_years, index=len(sorted_years)-1, key="tri_f")
-            titre_graph = f"Évolution des structures {lbl_short} entre {y_deb} et {y_fin}"
+            
+            show_traj = c_opt.checkbox("Afficher la trajectoire complète (Années intermédiaires)", value=False)
+            
+            titre_graph = f"Évolution des structures {lbl_short} : {y_deb} ➡ {y_fin}"
+            if show_traj: titre_graph += " (Trajectoire)"
+            
             grps_1 = set(data_dict[str(y_deb)][grp_tri].dropna().unique())
             grps_2 = set(data_dict[str(y_fin)][grp_tri].dropna().unique())
             common_grps = sorted(list(grps_1 & grps_2))
+            
             c_sel_traj, c_all_traj = st.columns([3, 1])
             with c_all_traj:
                 st.write("")
@@ -469,23 +588,141 @@ elif not combined_df.empty or not df_sorties.empty:
                 else: sel_traj = st.multiselect("Groupes à comparer:", common_grps, default=common_grps[:5] if len(common_grps)>5 else common_grps, key="ms_dyn")
             
             if sel_traj:
-                df_1 = data_dict[str(y_deb)][data_dict[str(y_deb)][grp_tri].isin(sel_traj)]
-                df_2 = data_dict[str(y_fin)][data_dict[str(y_fin)][grp_tri].isin(sel_traj)]
-                viz_1 = get_stats(df_1, grp_tri, val_col, s_low, s_high, min_eff_carto)
-                viz_2 = get_stats(df_2, grp_tri, val_col, s_low, s_high, min_eff_carto)
-                if not viz_1.empty and not viz_2.empty:
-                    merged = pd.merge(viz_1, viz_2, on='Groupe', suffixes=('_start', '_end'))
+                fig = go.Figure()
+                
+                if show_traj:
+                    years_in_range = [y for y in sorted_years if y >= y_deb and y <= y_fin]
+                    full_traj_data = []
+                    for y in years_in_range:
+                        d_y = data_dict[str(y)]
+                        d_y = d_y[d_y[grp_tri].isin(sel_traj)]
+                        stats_y = get_stats(d_y, grp_tri, val_col, s_low, s_high, min_eff_carto)
+                        if not stats_y.empty:
+                            full_traj_data.append(stats_y)
+                            
+                    if full_traj_data:
+                        df_traj = pd.concat(full_traj_data, ignore_index=True)
+                        for i, grp_name in enumerate(sel_traj):
+                            df_g = df_traj[df_traj['Groupe'] == grp_name].sort_values('Year')
+                            if len(df_g) > 1:
+                                color = extended_palette[i % len(extended_palette)]
+                                fig.add_trace(go.Scatter(
+                                    x=df_g['Pct_High'], y=df_g['Pct_Low'],
+                                    mode='lines+markers+text' if show_labels else 'lines+markers',
+                                    name=grp_name,
+                                    text=df_g['Year'].astype(str) if show_labels else None,
+                                    textposition='top center',
+                                    marker=dict(size=8, color=color),
+                                    line=dict(width=2, color=color),
+                                    hovertext=df_g.apply(lambda row: f"{row['Groupe']} ({row['Year']})", axis=1)
+                                ))
+                                fig.add_trace(go.Scatter(
+                                    x=[df_g.iloc[0]['Pct_High']], y=[df_g.iloc[0]['Pct_Low']],
+                                    mode='markers', marker=dict(size=10, color='white', line=dict(color=color, width=2)),
+                                    showlegend=False, hoverinfo='skip'
+                                ))
+                                fig.add_trace(go.Scatter(
+                                    x=[df_g.iloc[-1]['Pct_High']], y=[df_g.iloc[-1]['Pct_Low']],
+                                    mode='markers', marker=dict(size=12, color=color, symbol='arrow-bar-up', angle=0),
+                                    showlegend=False, hoverinfo='skip'
+                                ))
+                else:
+                    df_1 = data_dict[str(y_deb)][data_dict[str(y_deb)][grp_tri].isin(sel_traj)]
+                    df_2 = data_dict[str(y_fin)][data_dict[str(y_fin)][grp_tri].isin(sel_traj)]
+                    viz_1 = get_stats(df_1, grp_tri, val_col, s_low, s_high, min_eff_carto)
+                    viz_2 = get_stats(df_2, grp_tri, val_col, s_low, s_high, min_eff_carto)
+                    
+                    if not viz_1.empty and not viz_2.empty:
+                        merged = pd.merge(viz_1, viz_2, on='Groupe', suffixes=('_start', '_end'))
+                        for i, row in merged.iterrows():
+                            color = extended_palette[i % len(extended_palette)]
+                            fig.add_trace(go.Scatter(x=[row['Pct_High_start']], y=[row['Pct_Low_start']], mode='markers', marker=dict(symbol='circle-open', size=10, color=color), name=f"{row['Full_Name_start']}", hovertext=f"{row['Full_Name_start']} ({y_deb})", showlegend=False))
+                            mode_point = 'markers+text' if show_labels else 'markers'
+                            fig.add_trace(go.Scatter(x=[row['Pct_High_end']], y=[row['Pct_Low_end']], mode=mode_point, marker=dict(symbol='circle', size=12, color=color), text=row['Groupe'] if show_labels else None, textposition='top center', name=f"{row['Full_Name_end']}", hovertext=f"{row['Full_Name_end']} ({y_fin})"))
+                            fig.add_annotation(x=row['Pct_High_end'], y=row['Pct_Low_end'], ax=row['Pct_High_start'], ay=row['Pct_Low_start'], xref="x", yref="y", axref="x", ayref="y", showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2, arrowcolor=color)
+
+                fig.update_layout(title=titre_graph, xaxis_title=lbl_x, yaxis_title=lbl_y, height=700, xaxis=axis_style, yaxis=axis_style, legend=dict(orientation="v", yanchor="top", y=1, xanchor="left", x=1.02)) 
+                
+                afficher_astuce_legende()
+                st.plotly_chart(fig, use_container_width=True)
+
+        elif mode_visu == "Dynamique (Prospective)":
+            st.markdown("#### 🔮 Simulation de l'avenir")
+            st.info("Ce module permet de projeter la structure actuelle dans le futur en simulant le vieillissement, les départs en retraite et une politique de recrutement.")
+            
+            # MISE EN PAGE OPTIMISEE : [1, 1, 1, 3] pour donner de la place au menu déroulant
+            c_base, c_horiz, c_ret, c_strat = st.columns([1, 1, 1, 3])
+            
+            y_base = c_base.selectbox("Année de référence (Départ)", sorted_years, index=len(sorted_years)-1, key="sim_base")
+            horizon = c_horiz.slider("Projection (+ Années)", 1, 10, 5, key="sim_h")
+            age_retraite = c_ret.number_input("Âge départ retraite", min_value=55, max_value=70, value=64, step=1, key="sim_ret")
+            
+            # GESTION STRATEGIE PERSONNALISEE
+            strat_options = [
+                "Option 1: Remplacement 100% (par Jeunes < 30 ans)",
+                "Option 2: Remplacement 50% (par Jeunes < 30 ans)",
+                "Option 3: Aucun remplacement (0%)",
+                "✨ Définir un taux personnalisé..."
+            ]
+            
+            sel_strat_label = c_strat.selectbox("Politique de remplacement", strat_options, key="sim_strat_mode")
+            
+            # Logique de détermination du taux
+            if "100%" in sel_strat_label: 
+                replacement_rate = 1.0
+            elif "50%" in sel_strat_label: 
+                replacement_rate = 0.5
+            elif "Aucun" in sel_strat_label: 
+                replacement_rate = 0.0
+            else:
+                # Apparition du slider si option personnalisée
+                replacement_rate = c_strat.slider("Taux de remplacement des départs (%)", 0, 100, 80, key="sim_custom_rate") / 100.0
+
+            # Selection Groupes
+            all_groups = sorted(data_dict[str(y_base)][grp_tri].dropna().unique())
+            c_sel_sim, c_all_sim = st.columns([3, 1])
+            with c_all_sim:
+                st.write("")
+                sel_all_sim = st.checkbox("Tout sélectionner", value=True, key="chk_all_sim")
+            with c_sel_sim:
+                if sel_all_sim: sel_sim = st.multiselect("Groupes à simuler:", all_groups, default=all_groups, key="ms_sim")
+                else: sel_sim = st.multiselect("Groupes à simuler:", all_groups, default=all_groups[:5] if len(all_groups)>5 else all_groups, key="ms_sim")
+
+            if sel_sim:
+                # 1. Calcul ETAT INITIAL
+                df_start = data_dict[str(y_base)]
+                df_start = df_start[df_start[grp_tri].isin(sel_sim)]
+                viz_start = get_stats(df_start, grp_tri, val_col, s_low, s_high, min_eff_carto, year_label=f"{y_base}")
+
+                # 2. Calcul ETAT PROJETÉ (avec le taux calculé)
+                df_projected = simulate_future(df_start, horizon, age_retraite, replacement_rate, grp_tri)
+                viz_proj = get_stats(df_projected, grp_tri, val_col, s_low, s_high, min_eff_carto, year_label=f"Proj +{horizon}")
+
+                if not viz_start.empty and not viz_proj.empty:
                     fig = go.Figure()
+                    merged = pd.merge(viz_start, viz_proj, on='Groupe', suffixes=('_start', '_end'))
+                    
                     for i, row in merged.iterrows():
                         color = extended_palette[i % len(extended_palette)]
-                        fig.add_trace(go.Scatter(x=[row['Pct_High_start']], y=[row['Pct_Low_start']], mode='markers', marker=dict(symbol='circle-open', size=10, color=color), name=f"{row['Full_Name_start']}", hovertext=f"{row['Full_Name_start']} ({y_deb})", showlegend=False))
+                        # Point de départ
+                        fig.add_trace(go.Scatter(x=[row['Pct_High_start']], y=[row['Pct_Low_start']], mode='markers', marker=dict(symbol='circle-open', size=10, color=color), name=f"{row['Full_Name_start']}", hovertext=f"{row['Full_Name_start']} (Ref)", showlegend=False))
+                        # Point d'arrivée
                         mode_point = 'markers+text' if show_labels else 'markers'
-                        fig.add_trace(go.Scatter(x=[row['Pct_High_end']], y=[row['Pct_Low_end']], mode=mode_point, marker=dict(symbol='circle', size=12, color=color), text=row['Groupe'] if show_labels else None, textposition='top center', name=f"{row['Full_Name_end']}", hovertext=f"{row['Full_Name_end']} ({y_fin})"))
+                        fig.add_trace(go.Scatter(x=[row['Pct_High_end']], y=[row['Pct_Low_end']], mode=mode_point, marker=dict(symbol='circle', size=12, color=color), text=row['Groupe'] if show_labels else None, textposition='top center', name=f"{row['Full_Name_end']}", hovertext=f"{row['Full_Name_end']} (Proj)"))
+                        # Flèche
                         fig.add_annotation(x=row['Pct_High_end'], y=row['Pct_Low_end'], ax=row['Pct_High_start'], ay=row['Pct_Low_start'], xref="x", yref="y", axref="x", ayref="y", showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2, arrowcolor=color)
-                    fig.update_layout(title=titre_graph, xaxis_title=lbl_x, yaxis_title=lbl_y, height=700, xaxis=axis_style, yaxis=axis_style, legend=dict(orientation="v", yanchor="top", y=1, xanchor="left", x=1.02)) 
+
+                    titre_sim = f"Simulation Prospective : {y_base} ➡ +{horizon} ans (Retraite à {age_retraite} ans)"
+                    if "Personnalisé" in sel_strat_label or "Définir" in sel_strat_label:
+                        titre_sim += f" - Remplacement à {int(replacement_rate*100)}%"
                     
-                    afficher_astuce_legende() # AJOUT TIP
+                    fig.update_layout(title=titre_sim, xaxis_title=lbl_x, yaxis_title=lbl_y, height=700, xaxis=axis_style, yaxis=axis_style, legend=dict(orientation="v", yanchor="top", y=1, xanchor="left", x=1.02))
+                    
+                    afficher_astuce_legende()
                     st.plotly_chart(fig, use_container_width=True)
+                    
+                    st.warning("⚠️ **Note d'interprétation :** Si les embauches sont exclusivement liée à des remplacements de départs en retraite et si un point ne bouge pas ou continue d'aller vers la droite malgré un remplacement des départs en retraite à 100% par des jeunes de moins de 30 ans, c'est que **le nombre de départs en retraite est limité** dans la période choisie pour impacter la structure globale. La population continue de vieillir")
+
 
     elif selection_page == "🧿 Ages Vs Anciennetés":
         if combined_df.empty: st.warning("Veuillez charger des fichiers Effectifs (Stock)."); st.stop()
@@ -538,14 +775,14 @@ elif not combined_df.empty or not df_sorties.empty:
             st.plotly_chart(fig, use_container_width=True)
 
     elif selection_page == "🚪 Analyse du Turn-over":
-        st.header("🚪 Analyse du Turn-over")
+        st.header("🚪 Analyse des Sorties (Turn-over)")
         
         if df_sorties.empty:
             st.info("ℹ️ Veuillez charger le fichier 'Sorties' dans le menu latéral (Zone 2) pour activer cet onglet.")
         else:
             if 'ANNEE_SORTIE' in df_sorties.columns:
                 years_available = sorted(df_sorties['ANNEE_SORTIE'].dropna().unique())
-                tabs_sorties = st.tabs(["📉 Évolution Temporelle", "🥧 Répartition / Structure", "🧿 Micro-Analyse (Nuage de points)"])
+                tabs_sorties = st.tabs(["📉 Évolution Temporelle", "🥧 Répartition / Structure", "🧿 Ages Vs Anciennetés"])
                 
                 with tabs_sorties[0]:
                     st.subheader("Évolution du nombre de départs par an")
@@ -722,7 +959,7 @@ elif not combined_df.empty or not df_sorties.empty:
 
     elif selection_page == "📊 Absentéisme (Évolution)":
         if combined_df.empty: st.warning("Veuillez charger des fichiers Effectifs (Stock)."); st.stop()
-        st.header("Diagnostic Absentéisme : Évolution des Poids")
+        st.header("Diagnostic Absentéisme: Comment évoluent les indicateurs dans le temps ?")
         keywords_abs = ['NB J', 'NB H', 'ABS', 'NB AT', 'NB MP', 'NB D\'AT', 'ACCIDENT', 'MALADIE']
         all_abs_cols = [c for c in combined_df.columns if any(k in c for k in keywords_abs)]
         abs_cols_clean = [c for c in all_abs_cols if "FORMATION" not in c]
@@ -737,7 +974,7 @@ elif not combined_df.empty or not df_sorties.empty:
                 eff_total = len(df_period)
                 df_eff_dist = df_period.groupby(grp_abs).size().reset_index(name='Count')
                 df_eff_dist['Percentage'] = (df_eff_dist['Count'] / eff_total) * 100
-                df_eff_dist['Category'] = "1. % Part Effectif"
+                df_eff_dist['Category'] = "% Part Effectif"
                 final_data = [df_eff_dist[[grp_abs, 'Percentage', 'Category']]]
                 for y in sorted(years_abs):
                     df_y = combined_df[combined_df['ANNEE_FICH'] == int(y)]
@@ -748,7 +985,7 @@ elif not combined_df.empty or not df_sorties.empty:
                         df_abs_dist['Category'] = f"% Part {ind_abs} {y}"
                         final_data.append(df_abs_dist[[grp_abs, 'Percentage', 'Category']])
                 df_viz_abs = pd.concat(final_data, ignore_index=True)
-                fig = px.bar(df_viz_abs, x="Category", y="Percentage", color=grp_abs, title=f"Évolution des poids : Effectif vs {ind_abs}", color_discrete_sequence=extended_palette)
+                fig = px.bar(df_viz_abs, x="Category", y="Percentage", color=grp_abs, title=f"Évolution dans le temps du poids des effectifs vs {ind_abs}", color_discrete_sequence=extended_palette)
                 fig.update_layout(barmode='stack', yaxis_title="Part (%)", xaxis_title="", legend_traceorder="reversed")
                 
                 afficher_astuce_legende() # AJOUT TIP
@@ -757,7 +994,7 @@ elif not combined_df.empty or not df_sorties.empty:
 
     elif selection_page == "⚖️ Absentéisme (Comparaison)":
         if combined_df.empty: st.warning("Veuillez charger des fichiers Effectifs (Stock)."); st.stop()
-        st.header("⚖️ Répartition de l'Absentéisme par Motif")
+        st.header("Diagnostic Absentéisme: par Motifs")
         keywords_abs = ['NB J', 'NB H', 'ABS', 'NB AT', 'NB MP', 'NB D\'AT', 'ACCIDENT', 'MALADIE']
         all_abs_cols = [c for c in combined_df.columns if any(k in c for k in keywords_abs)]
         abs_cols_clean = [c for c in all_abs_cols if "FORMATION" not in c]
@@ -780,7 +1017,7 @@ elif not combined_df.empty or not df_sorties.empty:
                         plot_data.append(tmp_abs[[grp_comp, 'Pct', 'Indicateur']])
                 if plot_data:
                     df_plot = pd.concat(plot_data, ignore_index=True)
-                    fig = px.bar(df_plot, x="Indicateur", y="Pct", color=grp_comp, title=f"Poids des services sur l'absentéisme (Cumul {min(years_comp)}-{max(years_comp)})", color_discrete_sequence=extended_palette)
+                    fig = px.bar(df_plot, x="Indicateur", y="Pct", color=grp_comp, title=f"Poids des effectifs dans l'absentéisme (Cumul {min(years_comp)}-{max(years_comp)})", color_discrete_sequence=extended_palette)
                     fig.update_layout(barmode='stack', barnorm='percent', yaxis_title="Part (%)", legend_traceorder="reversed")
                     
                     afficher_astuce_legende() # AJOUT TIP
@@ -802,7 +1039,7 @@ elif not combined_df.empty or not df_sorties.empty:
                 plot_data = []
                 tmp_eff = df_c.groupby(grp_oth, observed=True).size().reset_index(name='Valeur')
                 total_eff = tmp_eff['Valeur'].sum()
-                tmp_eff['Pct'] = (tmp_eff['Valeur'] / total_eff) * 100; tmp_eff['Indicateur'] = "1. % Effectif"
+                tmp_eff['Pct'] = (tmp_eff['Valeur'] / total_eff) * 100; tmp_eff['Indicateur'] = "% Effectif"
                 plot_data.append(tmp_eff[[grp_oth, 'Pct', 'Indicateur']])
                 for m in other_cols:
                     tmp_kpi = df_c.groupby(grp_oth, observed=True)[m].sum().reset_index(name='Valeur')
